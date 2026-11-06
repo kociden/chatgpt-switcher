@@ -33,7 +33,9 @@ param(
   [switch]$NoShortcut,
   [switch]$Version,
   [switch]$Shared,
-  [string]$SaveAuth
+  [string]$SaveAuth,
+  [ValidateSet('ja', 'en')]
+  [string]$Language
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,10 +48,459 @@ $script:Root       = Join-Path $env:USERPROFILE 'ChatGPT-Accounts'
 $script:ConfigPath = Join-Path $script:Root 'accounts.json'
 $script:LogPath    = Join-Path $script:Root 'switcher.log'
 $script:MainId     = '__main__'
-$script:MainLabel  = 'メイン（元々ログインしているアカウント）'
+$script:MainLabel  = ''
 $script:Palette    = @('#4285F4','#34A853','#EA4335','#F9AB00','#A142F4','#F538A0','#12B5CB','#FF6D01')
 $script:AppCache   = $null
 $script:Gui        = $false
+
+
+# Embedded translations preserve the dependency-free, single-script distribution.
+$script:UiLanguage = 'ja'
+$script:Translations = ConvertFrom-Json @'
+{
+  "MainLabel": {
+    "ja": "メイン（元々ログインしているアカウント）",
+    "en": "Main (original signed-in account)"
+  },
+  "AppTitle": {
+    "ja": "ChatGPT アカウント切替",
+    "en": "ChatGPT Account Switcher"
+  },
+  "Cancel": {
+    "ja": "キャンセル",
+    "en": "Cancel"
+  },
+  "EmptyAccount": {
+    "ja": "アカウント名が空です。",
+    "en": "Account name is empty."
+  },
+  "DuplicateAccount": {
+    "ja": "「{0}」は既に登録されています。",
+    "en": "“{0}” is already registered."
+  },
+  "AccountNotFound": {
+    "ja": "アカウント「{0}」が見つかりません。",
+    "en": "Account “{0}” was not found."
+  },
+  "AccountRunning": {
+    "ja": "「{0}」のChatGPTが起動中です。先に終了してください。",
+    "en": "ChatGPT is running for “{0}”. Close it first."
+  },
+  "InstallApp": {
+    "ja": "ChatGPTデスクトップアプリが見つかりません。Microsoft Store から「ChatGPT」をインストールしてください。",
+    "en": "ChatGPT desktop app was not found. Install ChatGPT from Microsoft Store."
+  },
+  "AccountNotRegistered": {
+    "ja": "アカウント「{0}」が登録されていません。",
+    "en": "Account “{0}” is not registered."
+  },
+  "ExeNotFound": {
+    "ja": "ChatGPT.exe が見つかりません（{0}）。",
+    "en": "ChatGPT.exe was not found ({0})."
+  },
+  "LoginFirst": {
+    "ja": "現在の ~/.codex\\auth.json が見つかりません。先にChatGPTで一度ログインしてください。",
+    "en": "Cannot find ~/.codex/auth.json. Sign in to ChatGPT first."
+  },
+  "AppNotFound": {
+    "ja": "ChatGPTデスクトップアプリが見つかりません。",
+    "en": "ChatGPT desktop app was not found."
+  },
+  "SharedAlreadyRunning": {
+    "ja": "完全共有アカウントは1つずつです。今開いているChatGPTのウィンドウを閉じてから、もう一度切り替えてください。",
+    "en": "Only one shared account can run at a time. Close the open ChatGPT windows and try again."
+  },
+  "Main": {
+    "ja": "メイン",
+    "en": "Main"
+  },
+  "Accounts": {
+    "ja": "アカウント",
+    "en": "Accounts"
+  },
+  "OpenAs": {
+    "ja": "ChatGPT を「{0}」で開く",
+    "en": "Open ChatGPT as “{0}”"
+  },
+  "OpenPicker": {
+    "ja": "切替ウィンドウを開く",
+    "en": "Open account picker"
+  },
+  "LaunchAs": {
+    "ja": "ChatGPT を「{0}」で起動",
+    "en": "Launch ChatGPT as “{0}”"
+  },
+  "PickerShortcut": {
+    "ja": "ChatGPT アカウント切替.lnk",
+    "en": "ChatGPT Account Switcher.lnk"
+  },
+  "ChooseAccount": {
+    "ja": "ChatGPT のアカウントを選んで起動",
+    "en": "Choose an account and launch ChatGPT"
+  },
+  "TrayShortcut": {
+    "ja": "ChatGPT 切替（トレイ常駐）.lnk",
+    "en": "ChatGPT Switcher (Tray).lnk"
+  },
+  "TrayDescription": {
+    "ja": "タスクトレイに常駐して右クリックで切替",
+    "en": "Run in the system tray; right-click to switch accounts"
+  },
+  "TrayTitle": {
+    "ja": "ChatGPT アカウント切替（トレイ常駐）",
+    "en": "ChatGPT Account Switcher (Tray)"
+  },
+  "AccountNamePrompt": {
+    "ja": "アカウントの表示名を入力してください（例: 仕事用 / 個人 / 副業）",
+    "en": "Enter an account display name (e.g. Work / Personal)"
+  },
+  "AddAccount": {
+    "ja": "アカウントを追加",
+    "en": "Add account"
+  },
+  "ModePrompt": {
+    "ja": "「{0}」のモードを選んでください。\n\n[はい] 完全共有モード:\n  Codexのプロジェクト/チャットを全アカウントで共有（公式風）。ただし1アカウントずつ（同時起動不可）。\n\n[いいえ] 分離モード:\n  アカウントごとに独立。同時起動OK。プロジェクトは別々。",
+    "en": "Choose a mode for “{0}”.\n\n[Yes] Shared mode:\nShare Codex projects and chats across accounts. Only one account can run at a time.\n\n[No] Isolated mode:\nSeparate projects and logins. Multiple accounts can run together."
+  },
+  "SharedModeQuestion": {
+    "ja": "完全共有モードにしますか？",
+    "en": "Use shared mode?"
+  },
+  "Error": {
+    "ja": "エラー",
+    "en": "Error"
+  },
+  "SharedAdded": {
+    "ja": "「{0}」を完全共有で追加しました。\n\n今から起動してこのアカウントでログインしますか？\n（ログイン後、一覧の右クリック→「現在のログインをこのアカウントとして保存」を実行してください）",
+    "en": "Added “{0}” in shared mode.\n\nLaunch and sign in now?\nAfter signing in, right-click this account and choose “Save current login to this account”."
+  },
+  "IsolatedAdded": {
+    "ja": "「{0}」を追加しました。デスクトップにショートカットも作りました。\n\n今すぐ起動してログインしますか？",
+    "en": "Added “{0}” and created a desktop shortcut.\n\nLaunch and sign in now?"
+  },
+  "PickerHeading": {
+    "ja": "どのアカウントで開く？",
+    "en": "Which account would you like to open?"
+  },
+  "AddAccountButton": {
+    "ja": "＋ アカウントを追加",
+    "en": "＋ Add account"
+  },
+  "Settings": {
+    "ja": "設定 ▾",
+    "en": "Settings ▾"
+  },
+  "CreatePickerShortcuts": {
+    "ja": "この切替ウィンドウのショートカットを作る（デスクトップ/スタート）",
+    "en": "Create picker shortcuts (Desktop / Start)"
+  },
+  "ShortcutsCreated": {
+    "ja": "ショートカットを作成しました。",
+    "en": "Shortcuts created."
+  },
+  "StartTray": {
+    "ja": "タスクトレイに常駐して使う（今すぐ開始）",
+    "en": "Start system tray mode now"
+  },
+  "AutoStartTray": {
+    "ja": "トレイ常駐をWindows起動時に自動開始する",
+    "en": "Start tray mode when Windows starts"
+  },
+  "StartupRegistered": {
+    "ja": "スタートアップに登録しました。",
+    "en": "Added to Windows startup."
+  },
+  "OpenDataFolder": {
+    "ja": "データフォルダを開く",
+    "en": "Open data folder"
+  },
+  "Diagnostics": {
+    "ja": "環境診断を表示",
+    "en": "Show diagnostics"
+  },
+  "SharedBadge": {
+    "ja": "  〔共有〕",
+    "en": "  [Shared]"
+  },
+  "RunningBadge": {
+    "ja": "   ● 起動中",
+    "en": "   ● Running"
+  },
+  "SaveLogin": {
+    "ja": "現在のログインをこのアカウントとして保存",
+    "en": "Save current login to this account"
+  },
+  "SaveLoginQuestion": {
+    "ja": "今 ~/.codex にログイン中のアカウントを「{0}」として保存します。よろしいですか？",
+    "en": "Save the current ~/.codex login as “{0}”?"
+  },
+  "LoginSaved": {
+    "ja": "「{0}」として現在のログインを保存しました。",
+    "en": "Saved the current login as “{0}”."
+  },
+  "CreateDesktopShortcut": {
+    "ja": "デスクトップにショートカットを作る",
+    "en": "Create desktop shortcut"
+  },
+  "DesktopShortcutCreated": {
+    "ja": "デスクトップにショートカットを作成しました。",
+    "en": "Desktop shortcut created."
+  },
+  "Rename": {
+    "ja": "名前を変更",
+    "en": "Rename"
+  },
+  "RenamePrompt": {
+    "ja": "新しい表示名を入力してください",
+    "en": "Enter a new display name"
+  },
+  "RemoveAccount": {
+    "ja": "このアカウントを削除…",
+    "en": "Remove this account…"
+  },
+  "RemoveAccountQuestion": {
+    "ja": "「{0}」を削除しますか？\nこのPC上のログイン情報とキャッシュが消えます（ChatGPT側のアカウントや履歴は消えません）。",
+    "en": "Remove “{0}”?\nThis deletes this PC’s login data and cache. Your ChatGPT account and history will remain."
+  },
+  "PickerHint": {
+    "ja": "右クリックで各種操作。〔共有〕=プロジェクト共有(1つずつ)。それ以外は分離(同時起動可)。",
+    "en": "Right-click for actions. [Shared]: shared projects, one account at a time. Other accounts run independently."
+  },
+  "OpenChatGPT": {
+    "ja": "ChatGPT を開く:",
+    "en": "Open ChatGPT:"
+  },
+  "TrayRunning": {
+    "ja": "  ● 起動中",
+    "en": "  ● Running"
+  },
+  "ExitTray": {
+    "ja": "常駐を終了",
+    "en": "Exit tray mode"
+  },
+  "DiagnosticHeading": {
+    "ja": "=== ChatGPT アカウント切替 環境診断 ===",
+    "en": "=== ChatGPT Switcher Diagnostics ==="
+  },
+  "Version": {
+    "ja": "バージョン   : {0}",
+    "en": "Version     : {0}"
+  },
+  "Script": {
+    "ja": "スクリプト   : {0}",
+    "en": "Script      : {0}"
+  },
+  "DataFolder": {
+    "ja": "データ保存先 : {0}",
+    "en": "Data folder : {0}"
+  },
+  "AppNotFoundDiagnostic": {
+    "ja": "ChatGPTデスクトップアプリ: 見つかりません（Store の OpenAI.Codex / 通常インストール版のどちらも）",
+    "en": "ChatGPT desktop app: not found (Store or installer version)"
+  },
+  "DesktopApp": {
+    "ja": "ChatGPTデスクトップアプリ:",
+    "en": "ChatGPT desktop app:"
+  },
+  "AppKind": {
+    "ja": "  種別      : {0}",
+    "en": "  Type     : {0}"
+  },
+  "AppVersion": {
+    "ja": "  バージョン: {0}",
+    "en": "  Version  : {0}"
+  },
+  "AppLocation": {
+    "ja": "  場所      : {0}",
+    "en": "  Location : {0}"
+  },
+  "NotFound": {
+    "ja": "(見つからず)",
+    "en": "(not found)"
+  },
+  "ExeReadable": {
+    "ja": "  EXE 読み取り: OK",
+    "en": "  EXE readable: OK"
+  },
+  "ExeReadFailed": {
+    "ja": "  EXE 読み取り: NG ({0})",
+    "en": "  EXE read failed: {0}"
+  },
+  "DefaultCodexHome": {
+    "ja": "標準の CODEX_HOME  : {0}  (存在: {1})",
+    "en": "Default CODEX_HOME: {0} (exists: {1})"
+  },
+  "DefaultElectronData": {
+    "ja": "標準の Electron data: {0}  (存在: {1})",
+    "en": "Default Electron data: {0} (exists: {1})"
+  },
+  "AccountSummary": {
+    "ja": "登録アカウント: {0} 件   完全共有アクティブ: {1}",
+    "en": "Registered accounts: {0}   Active shared account: {1}"
+  },
+  "None": {
+    "ja": "(なし)",
+    "en": "(none)"
+  },
+  "SharedAuth": {
+    "ja": "      shared-auth: {0}  (保存済: {1})",
+    "en": "      shared-auth: {0} (saved: {1})"
+  },
+  "Processes": {
+    "ja": "ChatGPT.exe プロセス:",
+    "en": "ChatGPT.exe processes:"
+  },
+  "ProcessQueryFailed": {
+    "ja": "  (取得失敗: {0})",
+    "en": "  (query failed: {0})"
+  },
+  "Log": {
+    "ja": "ログ: {0}",
+    "en": "Log: {0}"
+  },
+  "Running": {
+    "ja": "  (起動中)",
+    "en": "  (running)"
+  },
+  "Added": {
+    "ja": "追加しました: [{0}] {1}{2}",
+    "en": "Added: [{0}] {1}{2}"
+  },
+  "Shared": {
+    "ja": " (完全共有)",
+    "en": " (shared)"
+  },
+  "LaunchCommand": {
+    "ja": "起動: ChatGPT-Switcher.ps1 -Launch {0}",
+    "en": "Launch: ChatGPT-Switcher.ps1 -Launch {0}"
+  },
+  "SaveLoginInstructions": {
+    "ja": "完全共有: 初回はこのアカウントでログイン後、次を実行して現在のログインを保存してください:",
+    "en": "Shared mode: after your first sign-in, run the following to save the current login:"
+  },
+  "SaveAccountNotFound": {
+    "ja": "アカウント「{0}」が見つかりません。",
+    "en": "Account “{0}” was not found."
+  },
+  "NotShared": {
+    "ja": "「{0}」は完全共有アカウントではありません。",
+    "en": "“{0}” is not a shared account."
+  },
+  "CurrentLoginSaved": {
+    "ja": "現在のログインを「{0}」として保存しました。",
+    "en": "Saved the current login as “{0}”."
+  },
+  "Removed": {
+    "ja": "削除しました: {0}",
+    "en": "Removed: {0}"
+  },
+  "Created": {
+    "ja": "作成: {0}",
+    "en": "Created: {0}"
+  },
+  "ShortcutsCreatedPrefix": {
+    "ja": "ショートカットを作成しました:\n",
+    "en": "Shortcuts created:\n"
+  },
+  "PinInstructions": {
+    "ja": "\n\nタスクバーに固定するには:\nスタートメニューの「ChatGPT アカウント切替」を右クリック →「タスクバーにピン留めする」。\nピン留め後、そのアイコンを右クリックすると各アカウントが並びます（ジャンプリスト）。",
+    "en": "\n\nTo pin to the taskbar:\nRight-click the switcher shortcut in Start and choose “Pin to taskbar”.\nRight-click the pinned icon to see accounts in its jump list."
+  },
+  "StartupPath": {
+    "ja": "スタートアップに登録: {0}",
+    "en": "Added to startup: {0}"
+  },
+  "ErrorPrefix": {
+    "ja": "エラー: {0}",
+    "en": "Error: {0}"
+  },
+  "ErrorDetails": {
+    "ja": "エラー: {0}\n\n詳細ログ: {1}",
+    "en": "Error: {0}\n\nDetails log: {1}"
+  },
+  "Yes": {
+    "ja": "はい",
+    "en": "Yes"
+  },
+  "No": {
+    "ja": "いいえ",
+    "en": "No"
+  },
+  "OK": {
+    "ja": "OK",
+    "en": "OK"
+  },
+  "SelectLanguage": {
+    "ja": "表示言語を選択してください",
+    "en": "Choose the interface language"
+  },
+  "Continue": {
+    "ja": "続行",
+    "en": "Continue"
+  },
+  "Language": {
+    "ja": "言語",
+    "en": "Language"
+  }
+}
+'@
+
+function Get-Text {
+  param([string]$Key)
+  $message = $script:Translations.$Key.($script:UiLanguage)
+  if ($null -eq $message) { throw "Missing translation: $Key" }
+  if ($args.Count) { return ($message -f $args) }
+  return $message
+}
+
+function Set-InterfaceLanguage {
+  param([ValidateSet('ja', 'en')][string]$Code)
+  $script:UiLanguage = $Code
+  $script:MainLabel = Get-Text 'MainLabel'
+}
+
+function Show-LanguageSelector {
+  Ensure-Gui
+  $dialog = New-Object System.Windows.Forms.Form
+  $dialog.Text = '日本語 / English'
+  $dialog.StartPosition = 'CenterScreen'
+  $dialog.FormBorderStyle = 'FixedDialog'
+  $dialog.MaximizeBox = $false
+  $dialog.MinimizeBox = $false
+  $dialog.ClientSize = New-Object System.Drawing.Size(420, 160)
+  $dialog.Font = New-Object System.Drawing.Font('Yu Gothic UI', 10)
+  $label = New-Object System.Windows.Forms.Label
+  $label.Text = Get-Text 'SelectLanguage'
+  $label.SetBounds(15, 15, 390, 30)
+  $choices = New-Object System.Windows.Forms.ComboBox
+  $choices.DropDownStyle = 'DropDownList'
+  $choices.SetBounds(15, 50, 390, 30)
+  [void]$choices.Items.AddRange(@('日本語', 'English'))
+  $codes = @('ja', 'en')
+  $choices.SelectedIndex = [Array]::IndexOf($codes, $script:UiLanguage)
+  $continue = New-Object System.Windows.Forms.Button
+  $continue.SetBounds(285, 105, 120, 35)
+  $continue.Text = Get-Text 'Continue'
+  $continue.DialogResult = 'OK'
+  $dialog.Controls.AddRange(@($label, $choices, $continue))
+  $dialog.AcceptButton = $continue
+  $choices.add_SelectedIndexChanged({
+    $code = @('ja','en')[$this.SelectedIndex]
+    $label.Text = $script:Translations.SelectLanguage.$code
+    $continue.Text = $script:Translations.Continue.$code
+  })
+  $owner = Get-DialogOwner
+  try {
+    $result = if ($owner) { $dialog.ShowDialog($owner) } else { $dialog.ShowDialog() }
+    if ($result -ne 'OK') { return $false }
+    $code = $codes[$choices.SelectedIndex]
+    $cfg = Get-Config
+    $cfg | Add-Member -NotePropertyName language -NotePropertyValue $code -Force
+    Save-Config $cfg
+    Set-InterfaceLanguage $code
+    return $true
+  } finally { $dialog.Dispose() }
+}
 
 # ------------------------------------------------------------------ 共通
 
@@ -77,26 +528,61 @@ function Get-DialogOwner {
   return $null
 }
 
-function Show-Message {
-  param([string]$Text, [string]$Title = 'ChatGPT アカウント切替', [string]$Icon = 'Information')
+function Show-LocalizedDialog {
+  param([string]$Text, [string]$Title, [string]$Icon = 'Information', [switch]$Question)
   Ensure-Gui
+  $dialog = New-Object System.Windows.Forms.Form
+  $dialog.Text = $Title
+  $dialog.StartPosition = 'CenterScreen'
+  $dialog.FormBorderStyle = 'FixedDialog'
+  $dialog.MaximizeBox = $false
+  $dialog.MinimizeBox = $false
+  $dialog.Font = New-Object System.Drawing.Font('Yu Gothic UI', 10)
+  $dialog.ClientSize = New-Object System.Drawing.Size(560, 330)
+  $dialog.Icon = if ($Question) { [System.Drawing.SystemIcons]::Question } elseif ($Icon -eq 'Error') { [System.Drawing.SystemIcons]::Error } else { [System.Drawing.SystemIcons]::Information }
+  $body = New-Object System.Windows.Forms.TextBox
+  $body.Multiline = $true
+  $body.ReadOnly = $true
+  $body.BorderStyle = 'None'
+  $body.ScrollBars = 'Vertical'
+  $body.Text = $Text -replace "`r?`n", "`r`n"
+  $body.SetBounds(15, 15, 530, 255)
+  $yes = New-Object System.Windows.Forms.Button
+  $yes.SetBounds(315, 285, 110, 32)
+  $yes.Text = if ($Question) { Get-Text 'Yes' } else { Get-Text 'OK' }
+  $yes.DialogResult = 'OK'
+  $dialog.Controls.AddRange(@($body, $yes))
+  $dialog.AcceptButton = $yes
+  $dialog.CancelButton = $yes
+  if ($Question) {
+    $no = New-Object System.Windows.Forms.Button
+    $no.SetBounds(435, 285, 110, 32)
+    $no.Text = Get-Text 'No'
+    $no.DialogResult = 'Cancel'
+    $dialog.Controls.Add($no)
+    $dialog.CancelButton = $no
+    $dialog.AcceptButton = $no
+  }
   $owner = Get-DialogOwner
-  if ($owner) { [void][System.Windows.Forms.MessageBox]::Show($owner, $Text, $Title, 'OK', $Icon) }
-  else        { [void][System.Windows.Forms.MessageBox]::Show($Text, $Title, 'OK', $Icon) }
+  try {
+    $result = if ($owner) { $dialog.ShowDialog($owner) } else { $dialog.ShowDialog() }
+    return ($result -eq 'OK')
+  } finally { $dialog.Dispose() }
+}
+
+function Show-Message {
+  param([string]$Text, [string]$Title = (Get-Text 'AppTitle'), [string]$Icon = 'Information')
+  [void](Show-LocalizedDialog -Text $Text -Title $Title -Icon $Icon)
 }
 
 function Ask-YesNo {
-  param([string]$Text, [string]$Title = 'ChatGPT アカウント切替')
-  Ensure-Gui
-  $owner = Get-DialogOwner
-  if ($owner) { $r = [System.Windows.Forms.MessageBox]::Show($owner, $Text, $Title, 'YesNo', 'Question') }
-  else        { $r = [System.Windows.Forms.MessageBox]::Show($Text, $Title, 'YesNo', 'Question') }
-  return ($r -eq 'Yes')
+  param([string]$Text, [string]$Title = (Get-Text 'AppTitle'))
+  return (Show-LocalizedDialog -Text $Text -Title $Title -Question)
 }
 
 function Show-InputDialog {
   # 自前の入力ダイアログ（VisualBasic の InputBox は親を持てず背面に隠れるため）
-  param([string]$Prompt, [string]$Title = 'ChatGPT アカウント切替', [string]$Default = '')
+  param([string]$Prompt, [string]$Title = (Get-Text 'AppTitle'), [string]$Default = '')
   Ensure-Gui
   $owner = Get-DialogOwner
 
@@ -123,13 +609,13 @@ function Show-InputDialog {
   $tb.Text = $Default
 
   $ok = New-Object System.Windows.Forms.Button
-  $ok.Text = 'OK'
+  $ok.Text = Get-Text 'OK'
   $ok.Size = New-Object System.Drawing.Size(90, 30)
   $ok.Location = New-Object System.Drawing.Point(216, 92)
   $ok.DialogResult = 'OK'
 
   $cancel = New-Object System.Windows.Forms.Button
-  $cancel.Text = 'キャンセル'
+  $cancel.Text = (Get-Text 'Cancel')
   $cancel.Size = New-Object System.Drawing.Size(90, 30)
   $cancel.Location = New-Object System.Drawing.Point(316, 92)
   $cancel.DialogResult = 'Cancel'
@@ -260,9 +746,9 @@ function Find-Account {
 function Add-Account {
   param([string]$Display, [switch]$SkipShortcut, [switch]$Shared)
   $Display = $Display.Trim()
-  if ([string]::IsNullOrWhiteSpace($Display)) { throw 'アカウント名が空です。' }
+  if ([string]::IsNullOrWhiteSpace($Display)) { throw (Get-Text 'EmptyAccount') }
   $cfg = Get-Config
-  if ($cfg.accounts | Where-Object { $_.display -eq $Display }) { throw "「$Display」は既に登録されています。" }
+  if ($cfg.accounts | Where-Object { $_.display -eq $Display }) { throw (Get-Text 'DuplicateAccount' ($Display)) }
   $id = Get-SafeName $Display
   $n = 2
   while ($cfg.accounts | Where-Object { $_.id -eq $id }) { $id = (Get-SafeName $Display) + "_$n"; $n++ }
@@ -287,8 +773,8 @@ function Add-Account {
 function Remove-Account {
   param([string]$Key)
   $acc = Find-Account $Key
-  if (-not $acc) { throw "アカウント「$Key」が見つかりません。" }
-  if ((Get-RunningAccountIds) -contains $acc.id) { throw "「$($acc.display)」のChatGPTが起動中です。先に終了してください。" }
+  if (-not $acc) { throw (Get-Text 'AccountNotFound' ($Key)) }
+  if ((Get-RunningAccountIds) -contains $acc.id) { throw (Get-Text 'AccountRunning' ($($acc.display))) }
   $p = Get-AccountPaths $acc.id
   if (Test-Path -LiteralPath $p.Base) { Remove-Item -LiteralPath $p.Base -Recurse -Force }
   $cfg = Get-Config
@@ -303,7 +789,7 @@ function Remove-Account {
 function Rename-Account {
   param([string]$Key, [string]$NewDisplay)
   $acc = Find-Account $Key
-  if (-not $acc) { throw "アカウント「$Key」が見つかりません。" }
+  if (-not $acc) { throw (Get-Text 'AccountNotFound' ($Key)) }
   $NewDisplay = $NewDisplay.Trim()
   if ([string]::IsNullOrWhiteSpace($NewDisplay)) { return }
   $old = Get-AccountShortcutPath $acc
@@ -340,7 +826,7 @@ function Get-RunningAccountIds {
 function Start-Account {
   param([string]$Id)
   $app = Get-ChatGptApp
-  if (-not $app) { throw 'ChatGPTデスクトップアプリが見つかりません。Microsoft Store から「ChatGPT」をインストールしてください。' }
+  if (-not $app) { throw (Get-Text 'InstallApp') }
 
   if ($Id -eq $script:MainId) {
     if ($app.Kind -eq 'Store' -and $app.AppId) {
@@ -353,12 +839,12 @@ function Start-Account {
   }
 
   $acc = Find-Account $Id
-  if (-not $acc) { throw "アカウント「$Id」が登録されていません。" }
+  if (-not $acc) { throw (Get-Text 'AccountNotRegistered' ($Id)) }
 
   # 完全共有モード: 実の ~/.codex を使い、auth.json だけ差し替える（1アカウントずつ）
   if ($acc.mode -eq 'shared') { Start-SharedAccount -Account $acc; return }
 
-  if (-not $app.Exe) { throw "ChatGPT.exe が見つかりません（$($app.InstallLocation)）。" }
+  if (-not $app.Exe) { throw (Get-Text 'ExeNotFound' ($($app.InstallLocation))) }
 
   $p = Get-AccountPaths $acc.id
   New-Item -ItemType Directory -Force -Path $p.Electron, $p.Codex | Out-Null
@@ -411,7 +897,7 @@ function Set-ActiveShared {
 function Save-CurrentAuthToAccount {
   param($Account)
   $realAuth = Join-Path (Get-RealCodexHome) 'auth.json'
-  if (-not (Test-Path -LiteralPath $realAuth)) { throw "現在の ~/.codex\auth.json が見つかりません。先にChatGPTで一度ログインしてください。" }
+  if (-not (Test-Path -LiteralPath $realAuth)) { throw (Get-Text 'LoginFirst') }
   $store = Get-SharedAuthStore $Account
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $store) | Out-Null
   Copy-Item -LiteralPath $realAuth -Destination $store -Force
@@ -422,13 +908,13 @@ function Save-CurrentAuthToAccount {
 function Start-SharedAccount {
   param($Account)
   $app  = Get-ChatGptApp
-  if (-not $app) { throw 'ChatGPTデスクトップアプリが見つかりません。' }
+  if (-not $app) { throw (Get-Text 'AppNotFound') }
   $real = Get-RealCodexHome
   $realAuth = Join-Path $real 'auth.json'
   New-Item -ItemType Directory -Force -Path $real, (Get-AccountPaths $Account.id).Base | Out-Null
 
   if (Test-RealHomeInstanceRunning) {
-    throw "完全共有アカウントは1つずつです。今開いているChatGPTのウィンドウを閉じてから、もう一度切り替えてください。"
+    throw (Get-Text 'SharedAlreadyRunning')
   }
 
   $active = Get-ActiveShared
@@ -560,23 +1046,23 @@ function Set-JumpList {
     $jl.ShowFrequentCategory = $false
 
     $rows = @()
-    $rows += [pscustomobject]@{ id = $script:MainId; label = 'メイン' }
+    $rows += [pscustomobject]@{ id = $script:MainId; label = (Get-Text 'Main') }
     foreach ($a in (Get-Config).accounts) { $rows += [pscustomobject]@{ id = $a.id; label = $a.display } }
 
     foreach ($r in $rows) {
       $t = New-Object System.Windows.Shell.JumpTask
       $t.Title           = $r.label
-      $t.CustomCategory  = 'アカウント'
+      $t.CustomCategory  = (Get-Text 'Accounts')
       $t.ApplicationPath = $ps
       $t.Arguments       = ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Launch "{1}"' -f $script:ScriptPath, $r.id)
       if ($icon) { $t.IconResourcePath = $icon }
-      $t.Description = ("ChatGPT を「{0}」で開く" -f $r.label)
+      $t.Description = ((Get-Text 'OpenAs') -f $r.label)
       $jl.JumpItems.Add($t)
     }
 
     # 一覧ウィンドウを開くタスク
     $open = New-Object System.Windows.Shell.JumpTask
-    $open.Title = '切替ウィンドウを開く'
+    $open.Title = (Get-Text 'OpenPicker')
     $open.ApplicationPath = $ps
     $open.Arguments = ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $script:ScriptPath)
     if ($icon) { $open.IconResourcePath = $icon }
@@ -618,7 +1104,7 @@ function Get-AccountShortcutPath {
 function New-AccountShortcut {
   param($Account)
   $lnk = Get-AccountShortcutPath $Account
-  New-Shortcut -LnkPath $lnk -Arguments ('-Launch "{0}"' -f $Account.id) -IconPath (Get-AppIconPath) -Description ("ChatGPT を「{0}」で起動" -f $Account.display)
+  New-Shortcut -LnkPath $lnk -Arguments ('-Launch "{0}"' -f $Account.id) -IconPath (Get-AppIconPath) -Description ((Get-Text 'LaunchAs') -f $Account.display)
   Write-Log "shortcut created: $lnk"
   return $lnk
 }
@@ -628,9 +1114,9 @@ function New-PickerShortcuts {
   $desktop = [Environment]::GetFolderPath('Desktop')
   $programs = Join-Path ([Environment]::GetFolderPath('Programs')) 'ChatGPT アカウント切替'
   $made = @()
-  $made += New-Shortcut -LnkPath (Join-Path $desktop 'ChatGPT アカウント切替.lnk') -Arguments '' -IconPath $icon -Description 'ChatGPT のアカウントを選んで起動'
-  $made += New-Shortcut -LnkPath (Join-Path $programs 'ChatGPT アカウント切替.lnk') -Arguments '' -IconPath $icon -Description 'ChatGPT のアカウントを選んで起動'
-  $made += New-Shortcut -LnkPath (Join-Path $programs 'ChatGPT 切替（トレイ常駐）.lnk') -Arguments '-Tray' -IconPath $icon -Description 'タスクトレイに常駐して右クリックで切替'
+  $made += New-Shortcut -LnkPath (Join-Path $desktop 'ChatGPT アカウント切替.lnk') -Arguments '' -IconPath $icon -Description (Get-Text 'ChooseAccount')
+  $made += New-Shortcut -LnkPath (Join-Path $programs 'ChatGPT アカウント切替.lnk') -Arguments '' -IconPath $icon -Description (Get-Text 'ChooseAccount')
+  $made += New-Shortcut -LnkPath (Join-Path $programs 'ChatGPT 切替（トレイ常駐）.lnk') -Arguments '-Tray' -IconPath $icon -Description (Get-Text 'TrayDescription')
   # ピン留めした切替アイコンを右クリック→アカウント一覧（ジャンプリスト）を出すための AppID を付与
   foreach ($m in $made) { Set-ShortcutAppId -LnkPath $m }
   Set-JumpList
@@ -639,7 +1125,7 @@ function New-PickerShortcuts {
 
 function Install-TrayAutoStart {
   $startup = [Environment]::GetFolderPath('Startup')
-  return New-Shortcut -LnkPath (Join-Path $startup 'ChatGPT 切替（トレイ常駐）.lnk') -Arguments '-Tray' -IconPath (Get-AppIconPath) -Description 'ChatGPT アカウント切替（トレイ常駐）'
+  return New-Shortcut -LnkPath (Join-Path $startup 'ChatGPT 切替（トレイ常駐）.lnk') -Arguments '-Tray' -IconPath (Get-AppIconPath) -Description (Get-Text 'TrayTitle')
 }
 
 # ------------------------------------------------------------------ GUI: ピッカー
@@ -665,23 +1151,23 @@ function New-AvatarImage {
 
 function Invoke-AddAccountFlow {
   Ensure-Gui
-  $name = Show-InputDialog -Prompt 'アカウントの表示名を入力してください（例: 仕事用 / 個人 / 副業）' -Title 'アカウントを追加'
+  $name = Show-InputDialog -Prompt (Get-Text 'AccountNamePrompt') -Title (Get-Text 'AddAccount')
   if ([string]::IsNullOrWhiteSpace($name)) { return $null }
   # モード選択: 分離（同時起動OK・各自のプロジェクト） / 完全共有（1つずつ・プロジェクト共有）
-  $shared = Ask-YesNo ("「{0}」のモードを選んでください。`n`n[はい] 完全共有モード:`n  Codexのプロジェクト/チャットを全アカウントで共有（公式風）。ただし1アカウントずつ（同時起動不可）。`n`n[いいえ] 分離モード:`n  アカウントごとに独立。同時起動OK。プロジェクトは別々。" -f $name) '完全共有モードにしますか？'
+  $shared = Ask-YesNo ((Get-Text 'ModePrompt') -f $name) (Get-Text 'SharedModeQuestion')
   try {
     $acc = Add-Account -Display $name -Shared:$shared
   } catch {
-    Show-Message $_.Exception.Message 'エラー' 'Error'
+    Show-Message $_.Exception.Message (Get-Text 'Error') 'Error'
     return $null
   }
   if ($acc.mode -eq 'shared') {
-    if (Ask-YesNo ("「{0}」を完全共有で追加しました。`n`n今から起動してこのアカウントでログインしますか？`n（ログイン後、一覧の右クリック→「現在のログインをこのアカウントとして保存」を実行してください）" -f $acc.display)) {
-      try { Start-Account $acc.id } catch { Show-Message $_.Exception.Message 'エラー' 'Error' }
+    if (Ask-YesNo ((Get-Text 'SharedAdded') -f $acc.display)) {
+      try { Start-Account $acc.id } catch { Show-Message $_.Exception.Message (Get-Text 'Error') 'Error' }
     }
   } else {
-    if (Ask-YesNo ("「{0}」を追加しました。デスクトップにショートカットも作りました。`n`n今すぐ起動してログインしますか？" -f $acc.display)) {
-      try { Start-Account $acc.id } catch { Show-Message $_.Exception.Message 'エラー' 'Error' }
+    if (Ask-YesNo ((Get-Text 'IsolatedAdded') -f $acc.display)) {
+      try { Start-Account $acc.id } catch { Show-Message $_.Exception.Message (Get-Text 'Error') 'Error' }
     }
   }
   return $acc
@@ -692,7 +1178,7 @@ function Show-Picker {
   Set-JumpList
 
   $form = New-Object System.Windows.Forms.Form
-  $form.Text = 'ChatGPT アカウント切替'
+  $form.Text = (Get-Text 'AppTitle')
   $form.StartPosition = 'CenterScreen'
   $form.FormBorderStyle = 'FixedDialog'
   $form.MaximizeBox = $false
@@ -712,7 +1198,7 @@ function Show-Picker {
   $script:PickerForm = $form
 
   $header = New-Object System.Windows.Forms.Label
-  $header.Text = 'どのアカウントで開く？'
+  $header.Text = (Get-Text 'PickerHeading')
   $header.Font = New-Object System.Drawing.Font('Yu Gothic UI', 12, [System.Drawing.FontStyle]::Bold)
   $header.AutoSize = $true
   $header.Margin = New-Object System.Windows.Forms.Padding(4, 0, 4, 8)
@@ -730,24 +1216,27 @@ function Show-Picker {
   $footer.Margin = New-Object System.Windows.Forms.Padding(0, 8, 0, 0)
 
   $btnAdd = New-Object System.Windows.Forms.Button
-  $btnAdd.Text = '＋ アカウントを追加'
+  $btnAdd.Text = (Get-Text 'AddAccountButton')
   $btnAdd.AutoSize = $true
   $btnAdd.Height = 34
   $btnAdd.FlatStyle = 'System'
   $btnAdd.add_Click({ if (Invoke-AddAccountFlow) { Update-PickerRows } })
 
   $btnMenu = New-Object System.Windows.Forms.Button
-  $btnMenu.Text = '設定 ▾'
+  $btnMenu.Text = (Get-Text 'Settings')
   $btnMenu.AutoSize = $true
   $btnMenu.Height = 34
   $btnMenu.FlatStyle = 'System'
   $menu = New-Object System.Windows.Forms.ContextMenuStrip
-  [void]$menu.Items.Add('この切替ウィンドウのショートカットを作る（デスクトップ/スタート）', $null, { try { New-PickerShortcuts | Out-Null; Show-Message 'ショートカットを作成しました。' } catch { Show-Message $_.Exception.Message 'エラー' 'Error' } })
-  [void]$menu.Items.Add('タスクトレイに常駐して使う（今すぐ開始）', $null, { Start-Process -FilePath (Get-PowerShellExe) -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Tray' -f $script:ScriptPath) })
-  [void]$menu.Items.Add('トレイ常駐をWindows起動時に自動開始する', $null, { try { Install-TrayAutoStart | Out-Null; Show-Message 'スタートアップに登録しました。' } catch { Show-Message $_.Exception.Message 'エラー' 'Error' } })
+  [void]$menu.Items.Add((Get-Text 'Language'), $null, {
+    if (Show-LanguageSelector) { $script:PickerForm.Tag = 'LanguageChanged'; $script:PickerForm.Close() }
+  })
+  [void]$menu.Items.Add((Get-Text 'CreatePickerShortcuts'), $null, { try { New-PickerShortcuts | Out-Null; Show-Message (Get-Text 'ShortcutsCreated') } catch { Show-Message $_.Exception.Message (Get-Text 'Error') 'Error' } })
+  [void]$menu.Items.Add((Get-Text 'StartTray'), $null, { Start-Process -FilePath (Get-PowerShellExe) -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}" -Tray' -f $script:ScriptPath) })
+  [void]$menu.Items.Add((Get-Text 'AutoStartTray'), $null, { try { Install-TrayAutoStart | Out-Null; Show-Message (Get-Text 'StartupRegistered') } catch { Show-Message $_.Exception.Message (Get-Text 'Error') 'Error' } })
   [void]$menu.Items.Add('-')
-  [void]$menu.Items.Add('データフォルダを開く', $null, { New-Item -ItemType Directory -Force -Path $script:Root | Out-Null; Start-Process explorer.exe $script:Root })
-  [void]$menu.Items.Add('環境診断を表示', $null, { Start-Process -FilePath (Get-PowerShellExe) -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -NoExit -File "{0}" -Diagnose' -f $script:ScriptPath) })
+  [void]$menu.Items.Add((Get-Text 'OpenDataFolder'), $null, { New-Item -ItemType Directory -Force -Path $script:Root | Out-Null; Start-Process explorer.exe $script:Root })
+  [void]$menu.Items.Add((Get-Text 'Diagnostics'), $null, { Start-Process -FilePath (Get-PowerShellExe) -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -NoExit -File "{0}" -Diagnose' -f $script:ScriptPath) })
   $btnMenu.add_Click({ $menu.Show($btnMenu, (New-Object System.Drawing.Point(0, $btnMenu.Height))) })
 
   $footer.Controls.Add($btnAdd)
@@ -767,7 +1256,9 @@ function Show-Picker {
 
   Update-PickerRows
   [void]$form.ShowDialog()
+  $changeLanguage = ($form.Tag -eq 'LanguageChanged')
   $form.Dispose()
+  if ($changeLanguage) { Show-Picker }
 }
 
 function Update-PickerRows {
@@ -787,8 +1278,8 @@ function Update-PickerRows {
   foreach ($r in $rows) {
     $btn = New-Object System.Windows.Forms.Button
     $isRunning = ($running -contains $r.id)
-    $badge = $(if ($r.mode -eq 'shared') { '  〔共有〕' } else { '' })
-    $btn.Text = '   ' + $r.display + $badge + $(if ($isRunning) { '   ● 起動中' } else { '' })
+    $badge = $(if ($r.mode -eq 'shared') { (Get-Text 'SharedBadge') } else { '' })
+    $btn.Text = '   ' + $r.display + $badge + $(if ($isRunning) { (Get-Text 'RunningBadge') } else { '' })
     $btn.Tag = $r.id
     $btn.Width = 400
     $btn.Height = 46
@@ -809,39 +1300,39 @@ function Update-PickerRows {
       try {
         Start-Account $this.Tag
         $script:PickerForm.Close()
-      } catch { Show-Message $_.Exception.Message 'エラー' 'Error' }
+      } catch { Show-Message $_.Exception.Message (Get-Text 'Error') 'Error' }
     })
 
     if ($r.id -ne $script:MainId) {
       $cm = New-Object System.Windows.Forms.ContextMenuStrip
       $cm.Tag = $r.id
       if ($r.mode -eq 'shared') {
-        $miSave = $cm.Items.Add('現在のログインをこのアカウントとして保存')
+        $miSave = $cm.Items.Add((Get-Text 'SaveLogin'))
         $miSave.Tag = $r.id
         $miSave.add_Click({
           $acc = Find-Account $this.Tag
-          if (Ask-YesNo ("今 ~/.codex にログイン中のアカウントを「{0}」として保存します。よろしいですか？" -f $acc.display)) {
-            try { Save-CurrentAuthToAccount $acc; Show-Message ("「{0}」として現在のログインを保存しました。" -f $acc.display) } catch { Show-Message $_.Exception.Message 'エラー' 'Error' }
+          if (Ask-YesNo ((Get-Text 'SaveLoginQuestion') -f $acc.display)) {
+            try { Save-CurrentAuthToAccount $acc; Show-Message ((Get-Text 'LoginSaved') -f $acc.display) } catch { Show-Message $_.Exception.Message (Get-Text 'Error') 'Error' }
           }
         })
         [void]$cm.Items.Add('-')
       }
-      $mi1 = $cm.Items.Add('デスクトップにショートカットを作る')
+      $mi1 = $cm.Items.Add((Get-Text 'CreateDesktopShortcut'))
       $mi1.Tag = $r.id
-      $mi1.add_Click({ try { New-AccountShortcut -Account (Find-Account $this.Tag) | Out-Null; Show-Message 'デスクトップにショートカットを作成しました。' } catch { Show-Message $_.Exception.Message 'エラー' 'Error' } })
-      $mi2 = $cm.Items.Add('名前を変更')
+      $mi1.add_Click({ try { New-AccountShortcut -Account (Find-Account $this.Tag) | Out-Null; Show-Message (Get-Text 'DesktopShortcutCreated') } catch { Show-Message $_.Exception.Message (Get-Text 'Error') 'Error' } })
+      $mi2 = $cm.Items.Add((Get-Text 'Rename'))
       $mi2.Tag = $r.id
       $mi2.add_Click({
         $acc = Find-Account $this.Tag
-        $n = Show-InputDialog -Prompt '新しい表示名を入力してください' -Title '名前を変更' -Default $acc.display
-        if (-not [string]::IsNullOrWhiteSpace($n)) { try { Rename-Account $this.Tag $n; Update-PickerRows } catch { Show-Message $_.Exception.Message 'エラー' 'Error' } }
+        $n = Show-InputDialog -Prompt (Get-Text 'RenamePrompt') -Title (Get-Text 'Rename') -Default $acc.display
+        if (-not [string]::IsNullOrWhiteSpace($n)) { try { Rename-Account $this.Tag $n; Update-PickerRows } catch { Show-Message $_.Exception.Message (Get-Text 'Error') 'Error' } }
       })
-      $mi3 = $cm.Items.Add('このアカウントを削除…')
+      $mi3 = $cm.Items.Add((Get-Text 'RemoveAccount'))
       $mi3.Tag = $r.id
       $mi3.add_Click({
         $acc = Find-Account $this.Tag
-        if (Ask-YesNo ("「{0}」を削除しますか？`nこのPC上のログイン情報とキャッシュが消えます（ChatGPT側のアカウントや履歴は消えません）。" -f $acc.display)) {
-          try { Remove-Account $this.Tag; Update-PickerRows } catch { Show-Message $_.Exception.Message 'エラー' 'Error' }
+        if (Ask-YesNo ((Get-Text 'RemoveAccountQuestion') -f $acc.display)) {
+          try { Remove-Account $this.Tag; Update-PickerRows } catch { Show-Message $_.Exception.Message (Get-Text 'Error') 'Error' }
         }
       })
       $btn.ContextMenuStrip = $cm
@@ -850,7 +1341,8 @@ function Update-PickerRows {
   }
 
   $hint = New-Object System.Windows.Forms.Label
-  $hint.Text = '右クリックで各種操作。〔共有〕=プロジェクト共有(1つずつ)。それ以外は分離(同時起動可)。'
+  $hint.Text = (Get-Text 'PickerHint')
+  $hint.MaximumSize = New-Object System.Drawing.Size(420, 0)
   $hint.AutoSize = $true
   $hint.ForeColor = [System.Drawing.Color]::Gray
   $hint.Font = New-Object System.Drawing.Font('Yu Gothic UI', 8.5)
@@ -869,33 +1361,34 @@ function Start-Tray {
   $iconPath = Get-AppIconPath
   $ni.Icon = [System.Drawing.SystemIcons]::Application
   if ($iconPath) { try { $ni.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($iconPath) } catch {} }
-  $ni.Text = 'ChatGPT アカウント切替'
+  $ni.Text = (Get-Text 'AppTitle')
   $menu = New-Object System.Windows.Forms.ContextMenuStrip
   $menu.Font = New-Object System.Drawing.Font('Yu Gothic UI', 10)
 
   $menu.add_Opening({
+    $ni.Text = Get-Text 'AppTitle'
     $m = $this
     $m.Items.Clear()
     $running = Get-RunningAccountIds
-    $head = $m.Items.Add('ChatGPT を開く:')
+    $head = $m.Items.Add((Get-Text 'OpenChatGPT'))
     $head.Enabled = $false
-    $mainItem = $m.Items.Add($script:MainLabel + $(if ($running -contains $script:MainId) { '  ● 起動中' } else { '' }))
+    $mainItem = $m.Items.Add($script:MainLabel + $(if ($running -contains $script:MainId) { (Get-Text 'TrayRunning') } else { '' }))
     $mainItem.Tag = $script:MainId
     $mainItem.Image = New-AvatarImage -Hex '#10A37F' -Text 'M' -Size 20
-    $mainItem.add_Click({ try { Start-Account $this.Tag } catch { Show-Message $_.Exception.Message 'エラー' 'Error' } })
+    $mainItem.add_Click({ try { Start-Account $this.Tag } catch { Show-Message $_.Exception.Message (Get-Text 'Error') 'Error' } })
     foreach ($a in (Get-Config).accounts) {
-      $it = $m.Items.Add($a.display + $(if ($running -contains $a.id) { '  ● 起動中' } else { '' }))
+      $it = $m.Items.Add($a.display + $(if ($running -contains $a.id) { (Get-Text 'TrayRunning') } else { '' }))
       $it.Tag = $a.id
       $it.Image = New-AvatarImage -Hex $a.color -Text $a.display.Substring(0, 1) -Size 20
-      $it.add_Click({ try { Start-Account $this.Tag } catch { Show-Message $_.Exception.Message 'エラー' 'Error' } })
+      $it.add_Click({ try { Start-Account $this.Tag } catch { Show-Message $_.Exception.Message (Get-Text 'Error') 'Error' } })
     }
     [void]$m.Items.Add('-')
-    $add = $m.Items.Add('＋ アカウントを追加')
+    $add = $m.Items.Add((Get-Text 'AddAccountButton'))
     $add.add_Click({ Invoke-AddAccountFlow | Out-Null })
-    $pick = $m.Items.Add('切替ウィンドウを開く')
+    $pick = $m.Items.Add((Get-Text 'OpenPicker'))
     $pick.add_Click({ Show-Picker })
     [void]$m.Items.Add('-')
-    $quit = $m.Items.Add('常駐を終了')
+    $quit = $m.Items.Add((Get-Text 'ExitTray'))
     $quit.add_Click({ [System.Windows.Forms.Application]::Exit() })
   })
 
@@ -914,58 +1407,58 @@ function Start-Tray {
 # ------------------------------------------------------------------ 診断
 
 function Show-Diagnose {
-  Write-Host '=== ChatGPT アカウント切替 環境診断 ===' -ForegroundColor Cyan
-  Write-Host ("バージョン   : {0}" -f $script:AppVersion)
-  Write-Host ("スクリプト   : {0}" -f $script:ScriptPath)
-  Write-Host ("データ保存先 : {0}" -f $script:Root)
+  Write-Host (Get-Text 'DiagnosticHeading') -ForegroundColor Cyan
+  Write-Host ((Get-Text 'Version') -f $script:AppVersion)
+  Write-Host ((Get-Text 'Script') -f $script:ScriptPath)
+  Write-Host ((Get-Text 'DataFolder') -f $script:Root)
   Write-Host ("PowerShell   : {0}" -f $PSVersionTable.PSVersion)
   Write-Host ("OS           : {0}" -f [Environment]::OSVersion.VersionString)
   Write-Host ''
   $app = Get-ChatGptApp
   if (-not $app) {
-    Write-Host 'ChatGPTデスクトップアプリ: 見つかりません（Store の OpenAI.Codex / 通常インストール版のどちらも）' -ForegroundColor Red
+    Write-Host (Get-Text 'AppNotFoundDiagnostic') -ForegroundColor Red
   } else {
-    Write-Host 'ChatGPTデスクトップアプリ:' -ForegroundColor Green
-    Write-Host ("  種別      : {0}" -f $app.Kind)
-    Write-Host ("  バージョン: {0}" -f $app.Version)
-    Write-Host ("  場所      : {0}" -f $app.InstallLocation)
-    Write-Host ("  EXE       : {0}" -f $(if ($app.Exe) { $app.Exe } else { '(見つからず)' }))
+    Write-Host (Get-Text 'DesktopApp') -ForegroundColor Green
+    Write-Host ((Get-Text 'AppKind') -f $app.Kind)
+    Write-Host ((Get-Text 'AppVersion') -f $app.Version)
+    Write-Host ((Get-Text 'AppLocation') -f $app.InstallLocation)
+    Write-Host ("  EXE       : {0}" -f $(if ($app.Exe) { $app.Exe } else { (Get-Text 'NotFound') }))
     Write-Host ("  PFN       : {0}" -f $app.PackageFamilyName)
     Write-Host ("  AppId     : {0}" -f $app.AppId)
     if ($app.Exe) {
-      try { $null = [System.IO.File]::OpenRead($app.Exe).Dispose(); Write-Host '  EXE 読み取り: OK' } catch { Write-Host "  EXE 読み取り: NG ($_)" -ForegroundColor Yellow }
+      try { $null = [System.IO.File]::OpenRead($app.Exe).Dispose(); Write-Host (Get-Text 'ExeReadable') } catch { Write-Host (Get-Text 'ExeReadFailed' ($_)) -ForegroundColor Yellow }
     }
   }
   Write-Host ''
-  Write-Host ("標準の CODEX_HOME  : {0}  (存在: {1})" -f (Join-Path $env:USERPROFILE '.codex'), (Test-Path (Join-Path $env:USERPROFILE '.codex')))
+  Write-Host ((Get-Text 'DefaultCodexHome') -f (Join-Path $env:USERPROFILE '.codex'), (Test-Path (Join-Path $env:USERPROFILE '.codex')))
   $stock = Join-Path $env:LOCALAPPDATA 'Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Roaming\Codex'
-  Write-Host ("標準の Electron data: {0}  (存在: {1})" -f $stock, (Test-Path $stock))
+  Write-Host ((Get-Text 'DefaultElectronData') -f $stock, (Test-Path $stock))
   Write-Host ''
   $running = Get-RunningAccountIds
   $cfg = Get-Config
   $active = Get-ActiveShared
-  Write-Host ("登録アカウント: {0} 件   完全共有アクティブ: {1}" -f $cfg.accounts.Count, $(if ($active) { $active } else { '(なし)' })) -ForegroundColor Cyan
-  Write-Host ("  [main] {0}{1}" -f $script:MainLabel, $(if ($running -contains $script:MainId) { '  ● 起動中' } else { '' }))
+  Write-Host ((Get-Text 'AccountSummary') -f $cfg.accounts.Count, $(if ($active) { $active } else { (Get-Text 'None') })) -ForegroundColor Cyan
+  Write-Host ("  [main] {0}{1}" -f $script:MainLabel, $(if ($running -contains $script:MainId) { (Get-Text 'TrayRunning') } else { '' }))
   foreach ($a in $cfg.accounts) {
     $p = Get-AccountPaths $a.id
     $m = if ($a.PSObject.Properties.Name -contains 'mode') { $a.mode } else { 'isolated' }
-    Write-Host ("  [{0}] {1}  <{2}>{3}" -f $a.id, $a.display, $m, $(if ($running -contains $a.id) { '  ● 起動中' } else { '' }))
+    Write-Host ("  [{0}] {1}  <{2}>{3}" -f $a.id, $a.display, $m, $(if ($running -contains $a.id) { (Get-Text 'TrayRunning') } else { '' }))
     if ($m -eq 'shared') {
       $store = Get-SharedAuthStore $a
-      Write-Host ("      shared-auth: {0}  (保存済: {1})" -f $store, (Test-Path $store))
+      Write-Host ((Get-Text 'SharedAuth') -f $store, (Test-Path $store))
     } else {
       Write-Host ("      electron: {0}" -f $p.Electron)
       Write-Host ("      codex   : {0}" -f $p.Codex)
     }
   }
   Write-Host ''
-  Write-Host 'ChatGPT.exe プロセス:' -ForegroundColor Cyan
+  Write-Host (Get-Text 'Processes') -ForegroundColor Cyan
   try {
     Get-CimInstance Win32_Process -Filter "Name = 'ChatGPT.exe'" | Where-Object { $_.CommandLine -notmatch '--type=' } |
       ForEach-Object { Write-Host ("  PID {0}: {1}" -f $_.ProcessId, $_.CommandLine) }
-  } catch { Write-Host "  (取得失敗: $_)" }
+  } catch { Write-Host (Get-Text 'ProcessQueryFailed' ($_)) }
   Write-Host ''
-  Write-Host ("ログ: {0}" -f $script:LogPath)
+  Write-Host ((Get-Text 'Log') -f $script:LogPath)
 }
 
 # ------------------------------------------------------------------ エントリ
@@ -973,24 +1466,35 @@ function Show-Diagnose {
 try {
   if ($Version) { Write-Host ("ChatGPT-Switcher {0}" -f $script:AppVersion); return }
 
+  $cfg = Get-Config
+  $savedLanguage = 'ja'
+  if ($cfg.PSObject.Properties.Name -contains 'language' -and $cfg.language -in @('ja','en')) {
+    $savedLanguage = $cfg.language
+  }
+  Set-InterfaceLanguage $savedLanguage
+  if ($Language) { Set-InterfaceLanguage $Language }
+  # Noninteractive commands use the saved language, or an explicit override.
+  if (-not $Language -and -not ($Diagnose -or $List -or $Add -or $Remove -or $SaveAuth -or $Setup -or $AutoStartTray)) {
+    if (-not (Show-LanguageSelector)) { return }
+  }
   if ($Diagnose) { Show-Diagnose; return }
 
   if ($List) {
     $running = Get-RunningAccountIds
     $cfg = Get-Config
-    Write-Host ("[{0}] {1}{2}" -f $script:MainId, $script:MainLabel, $(if ($running -contains $script:MainId) { '  (起動中)' } else { '' }))
+    Write-Host ("[{0}] {1}{2}" -f $script:MainId, $script:MainLabel, $(if ($running -contains $script:MainId) { (Get-Text 'Running') } else { '' }))
     foreach ($a in $cfg.accounts) {
-      Write-Host ("[{0}] {1}{2}" -f $a.id, $a.display, $(if ($running -contains $a.id) { '  (起動中)' } else { '' }))
+      Write-Host ("[{0}] {1}{2}" -f $a.id, $a.display, $(if ($running -contains $a.id) { (Get-Text 'Running') } else { '' }))
     }
     return
   }
 
   if ($Add) {
     $acc = Add-Account -Display $Add -SkipShortcut:$NoShortcut -Shared:$Shared
-    Write-Host ("追加しました: [{0}] {1}{2}" -f $acc.id, $acc.display, $(if ($acc.mode -eq 'shared') { ' (完全共有)' } else { '' }))
-    Write-Host ("起動: ChatGPT-Switcher.ps1 -Launch {0}" -f $acc.id)
+    Write-Host ((Get-Text 'Added') -f $acc.id, $acc.display, $(if ($acc.mode -eq 'shared') { (Get-Text 'Shared') } else { '' }))
+    Write-Host ((Get-Text 'LaunchCommand') -f $acc.id)
     if ($acc.mode -eq 'shared') {
-      Write-Host "完全共有: 初回はこのアカウントでログイン後、次を実行して現在のログインを保存してください:"
+      Write-Host (Get-Text 'SaveLoginInstructions')
       Write-Host ("  ChatGPT-Switcher.ps1 -SaveAuth {0}" -f $acc.id)
     }
     return
@@ -998,25 +1502,25 @@ try {
 
   if ($SaveAuth) {
     $acc = Find-Account $SaveAuth
-    if (-not $acc) { throw "アカウント「$SaveAuth」が見つかりません。" }
-    if ($acc.mode -ne 'shared') { throw "「$($acc.display)」は完全共有アカウントではありません。" }
+    if (-not $acc) { throw (Get-Text 'SaveAccountNotFound' ($SaveAuth)) }
+    if ($acc.mode -ne 'shared') { throw (Get-Text 'NotShared' ($($acc.display))) }
     Save-CurrentAuthToAccount $acc
-    Write-Host ("現在のログインを「{0}」として保存しました。" -f $acc.display)
+    Write-Host ((Get-Text 'CurrentLoginSaved') -f $acc.display)
     return
   }
 
-  if ($Remove) { Remove-Account $Remove; Write-Host "削除しました: $Remove"; return }
+  if ($Remove) { Remove-Account $Remove; Write-Host (Get-Text 'Removed' ($Remove)); return }
 
   if ($Setup) {
     $made = New-PickerShortcuts
-    $made | ForEach-Object { Write-Host "作成: $_" }
-    $msg = "ショートカットを作成しました:`n" + ($made -join "`n") + "`n`nタスクバーに固定するには:`nスタートメニューの「ChatGPT アカウント切替」を右クリック →「タスクバーにピン留めする」。`nピン留め後、そのアイコンを右クリックすると各アカウントが並びます（ジャンプリスト）。"
+    $made | ForEach-Object { Write-Host (Get-Text 'Created' ($_)) }
+    $msg = (Get-Text 'ShortcutsCreatedPrefix') + ($made -join "`n") + (Get-Text 'PinInstructions')
     Write-Host $msg
     if (-not $NoShortcut) { Show-Message $msg }
     return
   }
 
-  if ($AutoStartTray) { $lnk = Install-TrayAutoStart; Write-Host "スタートアップに登録: $lnk"; return }
+  if ($AutoStartTray) { $lnk = Install-TrayAutoStart; Write-Host (Get-Text 'StartupPath' ($lnk)); return }
 
   if ($Tray) { Start-Tray; return }
 
@@ -1026,9 +1530,9 @@ try {
 } catch {
   Write-Log ("ERROR: {0}`n{1}" -f $_.Exception.Message, $_.ScriptStackTrace)
   if ($Diagnose -or $List -or $Add -or $Remove) {
-    Write-Host ("エラー: {0}" -f $_.Exception.Message) -ForegroundColor Red
+    Write-Host ((Get-Text 'ErrorPrefix') -f $_.Exception.Message) -ForegroundColor Red
     exit 1
   }
-  Show-Message ("エラー: {0}`n`n詳細ログ: {1}" -f $_.Exception.Message, $script:LogPath) 'ChatGPT アカウント切替' 'Error'
+  Show-Message ((Get-Text 'ErrorDetails') -f $_.Exception.Message, $script:LogPath) (Get-Text 'AppTitle') 'Error'
   exit 1
 }

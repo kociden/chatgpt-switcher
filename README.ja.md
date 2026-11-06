@@ -76,7 +76,11 @@ irm https://raw.githubusercontent.com/__OWNER__/__REPO__/main/install.ps1 | iex
 
 ## 使い方
 
-**`ChatGPT-Switcher.cmd`** をダブルクリック → 一覧が開く。
+**`ChatGPT-Switcher.cmd`** をダブルクリック → **日本語 / English** を選択 → 一覧が開く。
+
+次回の起動時には前回選んだ言語が選択されています。言語選択画面を閉じると起動を中止します。一覧の **設定 → 言語** からも変更できます。選択した言語は、このツールの画面・ダイアログ・メニュー・トレイ・環境診断に適用されます。ChatGPT 自体の言語設定は別です。
+
+コマンドライン操作は保存された言語を使い、言語選択画面を表示しません。`-Language en` / `-Language ja` を指定すると、その実行だけ言語を上書きし、起動時の言語選択も省略できます（例: `ChatGPT-Switcher.cmd -Language en`、`ChatGPT-Switcher.cmd -Diagnose -Language en`）。ショートカットのファイル名は言語を切り替えても変わりません。
 
 1. **＋ アカウントを追加** → 名前を入力（仕事用 / 個人 …）。
 2. 新しいChatGPTウィンドウがサインイン画面で開く → そのアカウントでログイン。
