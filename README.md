@@ -76,7 +76,19 @@ No execution-policy change is needed — the launcher runs with `-ExecutionPolic
 
 ## Usage
 
-Double-click **`ChatGPT-Switcher.cmd`** → the picker opens.
+Double-click **`ChatGPT-Switcher.cmd`** → choose **日本語 (Japanese)** or **English** → the picker opens.
+
+The last language choice is preselected at the next interactive startup. Closing the language selector cancels startup. Change the language from **Settings → Language** in the picker. The selection applies to the switcher's windows, dialogs, menus, tray, and diagnostics; ChatGPT has its own language settings.
+
+Command-line operations use the saved language without prompting. Pass `-Language en` or `-Language ja` to override it for one invocation and skip the startup selector, for example:
+
+```powershell
+ChatGPT-Switcher.cmd -Language en
+ChatGPT-Switcher.cmd -Diagnose -Language en
+ChatGPT-Switcher.cmd -Tray -Language en
+```
+
+Translations are embedded in the script, so the single-file distribution and installer need no additional files. Shortcut filenames stay unchanged when switching languages.
 
 1. Click **＋ Add account**, type a name (Work / Personal / …).
 2. A fresh ChatGPT window opens on the sign-in screen — log in with that account.
